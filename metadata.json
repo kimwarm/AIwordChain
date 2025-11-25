@@ -1,0 +1,5 @@
+{
+  "name": "AI 끝말잇기 (AI Word Chain)",
+  "description": "Google Gemini 2.5 Flash 모델과 함께하는 스마트한 한국어 끝말잇기 게임입니다.",
+  "requestFramePermissions": []
+}
