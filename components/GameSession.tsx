@@ -3,12 +3,17 @@ import { Message, Sender, GameState } from '../types';
 import { playTurn, getWelcomeMessage } from '../services/geminiService';
 import MessageBubble from './MessageBubble';
 
-const GameSession: React.FC = () => {
+interface Props {
+    onExit: () => void;
+}
+
+const GameSession: React.FC<Props> = ({ onExit }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null); // Reference for the input field
 
   const [gameState, setGameState] = useState<GameState>({
     isPlaying: false,
@@ -25,6 +30,16 @@ const GameSession: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-focus input when loading finishes and game is playing
+  useEffect(() => {
+    if (!isLoading && gameState.isPlaying) {
+      // Small timeout ensures the DOM is ready after re-enabling
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    }
+  }, [isLoading, gameState.isPlaying]);
 
   // Initial Welcome
   useEffect(() => {
@@ -61,16 +76,13 @@ const GameSession: React.FC = () => {
       lastChar: null,
       turnCount: 0,
     });
-    // Reset initialization ref so welcome message could theoretically happen again if we re-mounted,
-    // but here we just add a system message.
     addMessage("새 게임을 시작합니다! 단어를 입력해주세요.", Sender.SYSTEM);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading || !gameState.isPlaying) return;
+  const processInput = async (inputValue: string) => {
+    if (!inputValue.trim() || isLoading || !gameState.isPlaying) return;
 
-    const userWord = input.trim().replace(/\s+/g, ''); // Remove spaces
+    const userWord = inputValue.trim().replace(/\s+/g, ''); // Remove spaces
     
     // 1. Basic Local Validation (Length)
     if (userWord.length < 2) {
@@ -138,27 +150,44 @@ const GameSession: React.FC = () => {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    processInput(input);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Handle Enter key specifically to avoid CJK composition issues
+      if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          processInput(input);
+      }
+  };
+
   return (
     <div className="flex flex-col h-full max-w-2xl mx-auto bg-white/80 backdrop-blur-md shadow-2xl rounded-none md:rounded-2xl overflow-hidden border border-slate-200">
       
       {/* Header */}
       <div className="bg-indigo-600 p-4 text-white flex justify-between items-center shadow-md z-10">
-        <div className="flex items-center space-x-2">
-            <span className="text-2xl">⚡</span>
-            <div>
-                <h1 className="font-bold text-lg leading-tight">AI 끝말잇기</h1>
-                <p className="text-xs text-indigo-200">Gemini 2.5 Flash Powered</p>
+        <div className="flex items-center space-x-3">
+            <button onClick={onExit} className="p-1 hover:bg-indigo-500 rounded-lg transition-colors" title="메인 메뉴로 나가기">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            </button>
+            <div className="flex items-center space-x-2">
+                <span className="text-xl">⚡</span>
+                <div>
+                    <h1 className="font-bold text-lg leading-tight hidden md:block">AI 끝말잇기</h1>
+                </div>
             </div>
         </div>
-        <div className="text-right">
-             <div className="text-xs font-medium bg-indigo-700 px-2 py-1 rounded">
-                {gameState.turnCount} 턴 째
-             </div>
+        <div className="text-right flex items-center space-x-3">
              {gameState.lastChar && gameState.isPlaying && (
-                 <div className="text-xs mt-1 text-yellow-300 font-bold">
-                    시작 글자: {gameState.lastChar}
+                 <div className="text-xs px-2 py-1 bg-indigo-800/50 rounded border border-indigo-400/30 text-yellow-300 font-bold">
+                    시작: {gameState.lastChar}
                  </div>
              )}
+             <div className="text-xs font-medium bg-indigo-700 px-2 py-1 rounded shadow-sm">
+                {gameState.turnCount} 턴
+             </div>
         </div>
       </div>
 
@@ -200,12 +229,20 @@ const GameSession: React.FC = () => {
                         ? '축하합니다! AI를 이기셨어요!' 
                         : '게임이 끝났습니다.'}
                   </p>
-                  <button 
-                    onClick={handleRestart}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"
-                  >
-                    다시 시작하기
-                  </button>
+                  <div className="space-y-2">
+                      <button 
+                        onClick={handleRestart}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"
+                      >
+                        다시 시작하기
+                      </button>
+                      <button 
+                        onClick={onExit}
+                        className="w-full bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold py-3 px-4 rounded-xl transition-colors"
+                      >
+                        메뉴로 나가기
+                      </button>
+                  </div>
               </div>
           </div>
       )}
@@ -214,12 +251,15 @@ const GameSession: React.FC = () => {
       <div className="bg-white p-4 border-t border-slate-100">
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             disabled={isLoading || !gameState.isPlaying}
-            placeholder={gameState.lastChar ? `'${gameState.lastChar}'(으)로 시작하는 단어 입력...` : "단어 입력..."}
-            className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all disabled:opacity-50"
+            placeholder={gameState.lastChar ? `'${gameState.lastChar}'(으)로 시작하는 단어` : "단어를 입력하세요..."}
+            className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all disabled:opacity-50 ime-mode-active"
+            autoComplete="off"
             autoFocus
           />
           <button

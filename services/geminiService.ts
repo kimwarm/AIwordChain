@@ -40,6 +40,31 @@ Rules:
 Tone: Friendly, encouraging, slightly competitive.
 `;
 
+// Helper to retry failed requests
+const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error: any) {
+    if (retries > 0) {
+      // Retry on network errors or 5xx server errors
+      const isRetryable = 
+        error.message?.includes('500') || 
+        error.message?.includes('xhr') || 
+        error.message?.includes('fetch') ||
+        error.message?.includes('overloaded') ||
+        error.status === 500 ||
+        error.status === 503;
+
+      if (isRetryable) {
+        console.warn(`API Call Failed. Retrying... (${retries} left). Error:`, error.message);
+        await new Promise(res => setTimeout(res, delay));
+        return retryOperation(operation, retries - 1, delay * 1.5);
+      }
+    }
+    throw error;
+  }
+};
+
 export const playTurn = async (
   userWord: string,
   lastAiWord: string | null,
@@ -56,27 +81,29 @@ export const playTurn = async (
     Analyze the user's input and play your turn.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.7, // Allow some creativity in word choice
-      },
-    });
+    return await retryOperation(async () => {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+          temperature: 0.6, // Slightly reduced for better JSON stability
+        },
+      });
 
-    const text = response.text;
-    if (!text) throw new Error("No response from AI");
-    
-    return JSON.parse(text) as GeminiResponse;
+      const text = response.text;
+      if (!text) throw new Error("No response from AI");
+      
+      return JSON.parse(text) as GeminiResponse;
+    });
 
   } catch (error) {
     console.error("Gemini API Error:", error);
     return {
       valid: false,
-      reason: "AI 연결에 문제가 발생했습니다. 다시 시도해주세요.",
+      reason: "일시적인 연결 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
       win: false
     };
   }
@@ -84,11 +111,13 @@ export const playTurn = async (
 
 export const getWelcomeMessage = async (): Promise<string> => {
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: "Write a short, cheerful 1-sentence welcome message for a Korean Word Chain game user.",
-        });
-        return response.text || "안녕하세요! 끝말잇기 한 판 어때요?";
+        return await retryOperation(async () => {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: "Write a short, cheerful 1-sentence welcome message for a Korean Word Chain game user.",
+            });
+            return response.text || "안녕하세요! 끝말잇기 한 판 어때요?";
+        }, 2);
     } catch (e) {
         return "안녕하세요! 끝말잇기 시작해볼까요?";
     }
