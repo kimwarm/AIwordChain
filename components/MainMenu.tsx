@@ -86,7 +86,7 @@ const MainMenu: React.FC<Props> = ({ onStartGame }) => {
         <Modal title="게임 정보" onClose={() => setActiveModal(null)}>
            <ul className="list-disc list-inside space-y-2">
                <li>Google Gemini 2.5 Flash 모델을 사용합니다.</li>
-               <li>두음법칙이 자동으로 적용됩니다. (예: 름 > 음)</li>
+               <li>두음법칙이 자동으로 적용됩니다. (예: 름 -&gt 음)</li>
                <li>표준국어대사전에 등재된 명사만 사용 가능합니다.</li>
                <li>한 번 사용한 단어는 다시 사용할 수 없습니다.</li>
            </ul>
